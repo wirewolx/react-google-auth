@@ -102,8 +102,14 @@ export function BotPlayground(props: Props) {
         answer?: string;
         citations?: any[];
         mode?: AskMode;
+        error?: string;
+        detail?: string;
       };
-      if (!res.ok) throw new Error((data as any)?.error || "Ошибка запроса");
+      if (!res.ok) {
+        const base = data?.error || "Ошибка запроса";
+        const detail = data?.detail ? ` — ${data.detail}` : "";
+        throw new Error(`${base}${detail}`);
+      }
       setAnswer(data?.answer || "");
       setCitations(data?.citations || []);
       setChat((prev) => [

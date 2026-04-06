@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/server/prisma";
 import { getOpenAIClient } from "@/server/openai";
 import { scoreByOverlap } from "@/server/rag";
+import { APIError } from "openai";
 import { NextResponse } from "next/server";
 
 export async function POST(
@@ -81,33 +82,61 @@ export async function POST(
     });
   }
 
-  const completion = await openai.chat.completions.create({
-    model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-    temperature: 0,
-    messages: [
-      {
-        role: "system",
-        content:
-          `Ты бот "${bot.name}". Отвечай строго и только на основе предоставленной документации.\n` +
-          `Если в документации нет ответа, скажи: "В документации этого нет." и предложи что добавить.\n` +
-          `Не выдумывай.`,
-      },
-      { role: "system", content: `Документация:\n\n${context}` },
-      { role: "user", content: question },
-    ],
-  });
+  try {
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+      temperature: 0,
+      messages: [
+        {
+          role: "system",
+          content:
+            `Ты бот "${bot.name}". Отвечай строго и только на основе предоставленной документации.\n` +
+            `Если в документации нет ответа, скажи: "В документации этого нет." и предложи что добавить.\n` +
+            `Не выдумывай.`,
+        },
+        { role: "system", content: `Документация:\n\n${context}` },
+        { role: "user", content: question },
+      ],
+    });
 
-  const answer =
-    completion.choices[0]?.message?.content?.trim() ||
-    "Не удалось получить ответ.";
+    const answer =
+      completion.choices[0]?.message?.content?.trim() ||
+      "Не удалось получить ответ.";
 
-  return NextResponse.json({
-    answer,
-    citations: ranked.map(({ p }) => ({
-      sourceTitle: p.source.title,
-      pageTitle: p.title,
-    })),
-    mode: "llm+r",
-  });
+    return NextResponse.json({
+      answer,
+      citations: ranked.map(({ p }) => ({
+        sourceTitle: p.source.title,
+        pageTitle: p.title,
+      })),
+      mode: "llm+r",
+    });
+  } catch (err: unknown) {
+    console.error("[ask] OpenAI", err);
+    let message = "Не удалось получить ответ от модели.";
+    let detail = err instanceof Error ? err.message : String(err);
+    let status = 502;
+
+    if (err instanceof APIError) {
+      detail = err.message;
+      if (err.status === 401)
+        message = "OpenAI: неверный или отозванный API-ключ.";
+      else if (err.status === 403)
+        message =
+          "OpenAI: доступ к модели запрещён (проверьте разрешённые модели в Project limits).";
+      else if (err.status === 429)
+        message =
+          "OpenAI: слишком много запросов (rate limit). Подождите и повторите.";
+      else if (err.status === 400)
+        message =
+          "OpenAI: неверный запрос (модель недоступна или неверное имя модели).";
+      else if (err.status === 402 || /insufficient_quota|billing/i.test(detail))
+        message = "OpenAI: нет средств на счёте или биллинг не настроен.";
+      if (typeof err.status === "number" && err.status >= 400 && err.status < 600)
+        status = err.status;
+    }
+
+    return NextResponse.json({ error: message, detail }, { status });
+  }
 }
 
