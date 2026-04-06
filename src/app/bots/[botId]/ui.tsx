@@ -1,10 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Props =
   | { botId: string; mode: "docs" }
   | { botId: string; mode: "ask" };
+
+type ChatItem =
+  | { id: string; role: "user"; text: string }
+  | { id: string; role: "assistant"; text: string; citations?: any[] };
+
+type ButtonDto = {
+  order: number;
+  label: string;
+  responseText: string;
+  enabled: boolean;
+};
 
 export function BotPlayground(props: Props) {
   const [title, setTitle] = useState("Документация");
@@ -14,10 +25,32 @@ export function BotPlayground(props: Props) {
   const [answer, setAnswer] = useState<string | null>(null);
   const [citations, setCitations] = useState<any[]>([]);
 
+  const [chat, setChat] = useState<ChatItem[]>([]);
+  const [buttons, setButtons] = useState<ButtonDto[]>([]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canAsk = useMemo(() => question.trim().length >= 2, [question]);
   const canSave = useMemo(() => text.trim().length >= 20, [text]);
+
+  useEffect(() => {
+    if (props.mode !== "ask") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/bots/${props.botId}/buttons`);
+        const data = (await res.json().catch(() => null)) as any;
+        if (!res.ok) return;
+        const incoming = (data?.buttons ?? []) as ButtonDto[];
+        if (!cancelled) setButtons(incoming.filter((b) => b.enabled));
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [props.botId, props.mode]);
 
   async function saveDocs() {
     setLoading(true);
@@ -47,15 +80,29 @@ export function BotPlayground(props: Props) {
     setAnswer(null);
     setCitations([]);
     try {
+      const q = question.trim();
+      setChat((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), role: "user", text: q },
+      ]);
       const res = await fetch(`/api/bots/${props.botId}/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question: q }),
       });
       const data = (await res.json().catch(() => null)) as any;
       if (!res.ok) throw new Error(data?.error || "Ошибка запроса");
       setAnswer(data?.answer || "");
       setCitations(data?.citations || []);
+      setChat((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          text: data?.answer || "",
+          citations: data?.citations || [],
+        },
+      ]);
     } catch (e: any) {
       setError(e?.message || "Ошибка");
     } finally {
@@ -115,9 +162,60 @@ export function BotPlayground(props: Props) {
 
   return (
     <div className="mt-5 space-y-4">
+      {buttons.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {buttons.slice(0, 4).map((b) => (
+            <button
+              key={b.order}
+              type="button"
+              onClick={() => {
+                setChat((prev) => [
+                  ...prev,
+                  { id: crypto.randomUUID(), role: "user", text: b.label },
+                  {
+                    id: crypto.randomUUID(),
+                    role: "assistant",
+                    text: b.responseText,
+                  },
+                ]);
+                setAnswer(b.responseText);
+                setCitations([]);
+              }}
+              className="rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-800 shadow-sm transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+              title="Ответ без ИИ"
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="max-h-72 space-y-3 overflow-auto p-1">
+          {chat.length === 0 ? (
+            <div className="text-sm text-zinc-500 dark:text-zinc-400">
+              Нажми кнопку (FAQ) или задай вопрос — здесь появится диалог.
+            </div>
+          ) : (
+            chat.map((m) => (
+              <div
+                key={m.id}
+                className={
+                  m.role === "user"
+                    ? "ml-auto w-fit max-w-[85%] rounded-2xl bg-zinc-900 px-3 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900"
+                    : "mr-auto w-fit max-w-[85%] rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-100"
+                }
+              >
+                <div className="whitespace-pre-wrap">{m.text}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
       <label className="block">
         <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
-          Вопрос
+          Вопрос (через документацию)
         </div>
         <input
           value={question}
