@@ -124,9 +124,15 @@ export async function POST(
       else if (err.status === 403)
         message =
           "OpenAI: доступ к модели запрещён (проверьте разрешённые модели в Project limits).";
-      else if (err.status === 429)
-        message =
-          "OpenAI: слишком много запросов (rate limit). Подождите и повторите.";
+      else if (err.status === 429) {
+        // OpenAI часто шлёт 429 и с текстом про quota/billing — это не «подождите минуту».
+        if (/quota|billing|payment method|insufficient/i.test(detail))
+          message =
+            "OpenAI: нет квоты или средств. Зайдите в Billing → пополните баланс или привяжите оплату.";
+        else
+          message =
+            "OpenAI: слишком много запросов (rate limit). Подождите и повторите.";
+      }
       else if (err.status === 400)
         message =
           "OpenAI: неверный запрос (модель недоступна или неверное имя модели).";
