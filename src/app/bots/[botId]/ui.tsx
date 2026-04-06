@@ -6,9 +6,17 @@ type Props =
   | { botId: string; mode: "docs" }
   | { botId: string; mode: "ask" };
 
+type AskMode = "llm+r" | "citations-only" | "retrieval-only" | "faq";
+
 type ChatItem =
   | { id: string; role: "user"; text: string }
-  | { id: string; role: "assistant"; text: string; citations?: any[] };
+  | {
+      id: string;
+      role: "assistant";
+      text: string;
+      citations?: any[];
+      mode?: AskMode;
+    };
 
 type ButtonDto = {
   order: number;
@@ -90,8 +98,12 @@ export function BotPlayground(props: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: q }),
       });
-      const data = (await res.json().catch(() => null)) as any;
-      if (!res.ok) throw new Error(data?.error || "Ошибка запроса");
+      const data = (await res.json().catch(() => null)) as {
+        answer?: string;
+        citations?: any[];
+        mode?: AskMode;
+      };
+      if (!res.ok) throw new Error((data as any)?.error || "Ошибка запроса");
       setAnswer(data?.answer || "");
       setCitations(data?.citations || []);
       setChat((prev) => [
@@ -101,6 +113,7 @@ export function BotPlayground(props: Props) {
           role: "assistant",
           text: data?.answer || "",
           citations: data?.citations || [],
+          mode: data?.mode,
         },
       ]);
     } catch (e: any) {
@@ -176,6 +189,7 @@ export function BotPlayground(props: Props) {
                     id: crypto.randomUUID(),
                     role: "assistant",
                     text: b.responseText,
+                    mode: "faq",
                   },
                 ]);
                 setAnswer(b.responseText);
@@ -206,6 +220,16 @@ export function BotPlayground(props: Props) {
                     : "mr-auto w-fit max-w-[85%] rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-100"
                 }
               >
+                {m.role === "assistant" && m.mode && (
+                  <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                    {m.mode === "llm+r" && "Ответ ИИ (по документации)"}
+                    {m.mode === "citations-only" &&
+                      "Цитаты (нет OPENAI_API_KEY — добавь ключ для ответа ИИ)"}
+                    {m.mode === "retrieval-only" &&
+                      "Нет совпадений в документации"}
+                    {m.mode === "faq" && "Кнопка (без ИИ)"}
+                  </div>
+                )}
                 <div className="whitespace-pre-wrap">{m.text}</div>
               </div>
             ))
