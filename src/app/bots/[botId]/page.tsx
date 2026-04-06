@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/server/prisma";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ButtonsEditor } from "./buttons-ui";
 import { BotPlayground } from "./ui";
 
 export default async function BotPage({
@@ -64,6 +65,17 @@ export default async function BotPage({
           <BotPlayground botId={bot.id} mode="ask" />
         </section>
       </div>
+
+      <section className="mt-8 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          3) Кнопки (FAQ)
+        </h2>
+        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+          Настрой 1–4 кнопки для самых частых вопросов. Позже мы сможем
+          показывать их в WhatsApp как interactive buttons.
+        </p>
+        <ButtonsEditor botId={bot.id} />
+      </section>
     </div>
   );
 }

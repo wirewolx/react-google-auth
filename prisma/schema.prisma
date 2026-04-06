@@ -91,9 +91,28 @@ model Project {
   owner   User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   sources Source[]
   chats   Chat[]
+  buttons BotButton[]
 
   @@index([ownerId])
   @@unique([ownerId, name])
+}
+
+/// Simple hardcoded "menu buttons" configured by the bot owner.
+/// Later these can be rendered as WhatsApp interactive buttons / quick replies.
+model BotButton {
+  id           String   @id @default(cuid())
+  projectId    String
+  order        Int
+  label        String
+  responseText String
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@unique([projectId, order])
 }
 
 /// Any knowledge source (wiki, docs, uploaded file, URL set, etc.)
